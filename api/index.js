@@ -41,8 +41,13 @@ const authenticateUser = async (req) => {
   }
 };
 
+// Rota de status
+app.get('/status', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Rota de status da assinatura
-app.get('/api/subscription-status', async (req, res) => {
+app.get('/subscription-status', async (req, res) => {
   try {
     const user = await authenticateUser(req);
 
@@ -57,31 +62,31 @@ app.get('/api/subscription-status', async (req, res) => {
     }
 
     if (!profile?.stripe_customer_id) {
-      return res.json({ status: 'never_subscribed' });
+      return res.json({ status: 'no_subscription' });
     }
 
     const subscriptions = await stripe.subscriptions.list({
       customer: profile.stripe_customer_id,
       status: 'active',
-      limit: 1
+      limit: 1,
     });
 
     if (subscriptions.data.length === 0) {
-      return res.json({ status: 'inactive' });
+      return res.json({ status: 'no_subscription' });
     }
 
     return res.json({
       status: 'active',
-      subscription: subscriptions.data[0]
+      subscription: subscriptions.data[0],
     });
   } catch (error) {
-    console.error('Erro:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Erro ao verificar status da assinatura:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Rota de criação de checkout
-app.post('/api/create-checkout-session', async (req, res) => {
+// Rota de checkout
+app.post('/create-checkout', async (req, res) => {
   try {
     const user = await authenticateUser(req);
 
@@ -101,8 +106,8 @@ app.post('/api/create-checkout-session', async (req, res) => {
       const customer = await stripe.customers.create({
         email: user.email,
         metadata: {
-          supabase_id: user.id
-        }
+          supabase_id: user.id,
+        },
       });
       customerId = customer.id;
 
@@ -122,21 +127,16 @@ app.post('/api/create-checkout-session', async (req, res) => {
       mode: 'subscription',
       success_url: `${req.headers.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.origin}/pricing`,
-      allow_promotion_codes: true
+      allow_promotion_codes: true,
     });
 
-    return res.json({ url: session.url });
+    res.json({ sessionId: session.id });
   } catch (error) {
-    console.error('Erro:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('Erro ao criar sessão de checkout:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Rota de teste
-app.get('/', (req, res) => {
-  res.json({ status: 'API está funcionando!' });
-});
-
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+  console.log(`API rodando na porta ${port}`);
 });
